@@ -7,9 +7,9 @@
 #define DEBUG 0
 
 const int NUM_ENCODERS = 5;
-const int clkInputs[NUM_ENCODERS] = {A0, A1, A2, A3, A4};
-const int dtInputs[NUM_ENCODERS] = {A0, A1, A2, A3, A4};
-const int swInputs[NUM_ENCODERS] = {A0, A1, A2, A3, A4};
+const clkInputs[NUM_ENCODERS] = {A0, A1, A2, A3, A4};
+const dtInputs[NUM_ENCODERS] = {A0, A1, A2, A3, A4};
+const swInputs[NUM_ENCODERS] = {A0, A1, A2, A3, A4};
 
 int values[NUM_ENCODERS];
 
