@@ -1,13 +1,14 @@
 /*******************************
   AutoMixer Extended Firmware
   Based on deej by Omri Harel
-  version: beta 1.1
+  version: beta 1.2
 *******************************/
 /*  Pinout */
 
 #include <TM1637.h>
 //#include <iostream>
 #include <math.h>
+//#include <EEPROM.h>
 
 #define SLIDER_0 A3 //A0
 #define SLIDER_1 A2 //A1
@@ -65,7 +66,7 @@ const unsigned int DISPLAY_THRESHOLD = 2;    // set threshold for detecting ADC 
 const unsigned int DISPLAY_TIMEOUT = 3000;    // display threshold in seconds
 
 //ExpAvgFilter
-const float alpha = 0.2;
+const float alpha = 0.7;
 double lastAvg[NUM_INPUTS];
 
 //max and min values for adc calibration
@@ -91,7 +92,6 @@ void setup() {
   //all sliders and pots
   for (int i = 0; i < NUM_INPUTS; i++) {
     pinMode(analogInputs[i], INPUT);
-    lastAnalogValues[i]=readADC(i);    
   }
 
   //mute btns
@@ -115,10 +115,15 @@ void setup() {
 
   tm.begin();
   tm.setBrightness(4);
-  Serial.println("Setup Complete");  
-  delay(1000);
-
+  Serial.println("IO Setup Complete");
+  delay(100);
+  Serial.println("Initializing Values..."); 
+  initValues();
+  Serial.println("Done");
+  Serial.println("Running welcome animation...");
   HelloWorld();
+  Serial.println("Done");
+  Serial.println("Streaming Data...");
 }
 
 void loop() {
@@ -138,7 +143,7 @@ void loop() {
 void updateValues() {
 
   for (uint8_t i = 0; i < NUM_INPUTS; i++) {
-    analogValues[i] = expMovingAverage(i);
+    analogValues[i] = readADC(i);
   }
   
   //check for mute buttons
@@ -152,6 +157,25 @@ void updateValues() {
 
 }
 
+void initValues() {
+
+  for (uint8_t i = 0; i < NUM_SLIDERS; i++) {
+    isMuted[i] = (bool) digitalRead(muteBtns[i]);
+  }
+
+  for (uint8_t i = NUM_SLIDERS+1; i < NUM_INPUTS; i++) {
+    isMuted[i] = 0;
+  }
+  
+  for(int j=0;j<10;j++){
+    for (uint8_t i = 0; i < NUM_INPUTS; i++) {
+      analogValues[i]=readADC(i);
+      lastAnalogValues[i]= analogValues[i];
+      previousValue[i]= getSliderPercent(i);
+    }
+  }
+}
+
 void sendValues() {
   String builtString = String("");
 
@@ -159,7 +183,7 @@ void sendValues() {
     builtString += String((int)(analogValues[i]*(int)(!isMuted[i]))); //affected by isMuted
 
     if (i < NUM_INPUTS - 1) {
-      builtString += String(",");
+      builtString += String("|");
     }
   }
   
@@ -298,18 +322,108 @@ void updateDevBtnLEDs2 () {
 }
 
 void HelloWorld() {
-  tm.display("0000");
-  digitalWrite(PWM_0,HIGH);
-  digitalWrite(PWM_1,HIGH);
-  digitalWrite(PWM_2,HIGH);
+  
+  //pwmledbtn welcome for 3 leds
+  for(int i=0;i<NUM_DEVBTN;i++){brightness[i]=0;}//set brightness values to 0
+  
+  //start led sequence
+  for(int i=NUM_DEVBTN-1;i>=0;i--){
+    while(brightness[i]<80){      
+      analogWrite(pwmLEDs[i],brightness[i]);
+      brightness[i]++;
+      delay(3);
+    }
+  }
+  while(brightness[0]<=255){   
+    for(int i=NUM_DEVBTN-1;i>=0;i--){
+      analogWrite(pwmLEDs[i],brightness[i]);
+      brightness[i]++;
+      delay(1);
+    }
+  }
+  for(int i=0;i<NUM_DEVBTN;i++){brightness[i]=255;} //reset brightness values to 255
+  while(brightness[0]>0){   
+    for(int i=NUM_DEVBTN-1;i>=0;i--){
+      analogWrite(pwmLEDs[i],brightness[i]);
+      brightness[i]--;
+      delay(2);
+    }
+  }  
+  for(int i=0;i<NUM_DEVBTN;i++){brightness[i]=255;} //reset brightness values to 255
 
-  delay(2000);
-
-  tm.clearScreen();
+  delay(10);
   digitalWrite(PWM_0,LOW);
   digitalWrite(PWM_1,LOW);
   digitalWrite(PWM_2,LOW);
-
+  
+  //start same led sequence 2 times
+  // for (int j=0; j<2 ;j++){
+  //   //reset brightness values to 0 and display values
+  //   for(int i=0;i<NUM_DEVBTN;i++){ 
+  //     brightness[i]=0;
+  //     analogWrite(pwmLEDs[i],brightness[i]);
+  //   }
+  //   delay(4);
+  //   //same led sequence but fast
+  //   for(int i=NUM_DEVBTN-1;i>=0;i--){
+  //     while(brightness[i]<80){      
+  //       analogWrite(pwmLEDs[i],brightness[i]);
+  //       brightness[i]++;
+  //       delay(2);        
+  //     }    
+  //   }    
+  // }  
+  
+  // welcome display animation
+  int t = 60; //delay time
+  const uint8_t rawBuffer[6][4] = {
+    {DisplayDigit().setE(), 0x00, 0x00, DisplayDigit().setB()},
+    {DisplayDigit().setF(), 0x00, 0x00, DisplayDigit().setC()},
+    {DisplayDigit().setA(), 0x00, 0x00, DisplayDigit().setD()},
+    {0x00, DisplayDigit().setA(), DisplayDigit().setD(), 0x00},
+    {0x00, DisplayDigit().setD(), DisplayDigit().setA(), 0x00},
+    {DisplayDigit().setD(), 0x00, 0x00, DisplayDigit().setA()},
+    };
+  auto d = DisplayDigit().setA().setE().setF().setD();
+  const uint8_t ring[4] = {d, 0x09, DisplayDigit().setA().setD(), 15};
+  const uint8_t dash[4] = {0x40, 0x40, 0x40, 0x40};
+  tm.clearScreen();
+  tm.setBrightness(2);
+  //main display animation loop
+  for(int i=0; i<60 ; i++){
+    for(int j =0; j<2;j++){
+      for(int k=0; k<6 ; k++){
+        tm.displayRawBytes(rawBuffer[k], 4);
+        delay(t);
+      }
+       if(t>=10){
+        t=t-10;
+      } else {
+        if(t>=5){t--;}
+      }
+    }
+  }
+  //display end flash
+  tm.setBrightness(1);
+  tm.displayRawBytes(ring, 4);
+  delay(60);
+  tm.setBrightness(2);
+  tm.displayRawBytes(ring, 4); 
+  delay(40);
+  tm.setBrightness(3);
+  tm.displayRawBytes(ring, 4);
+  delay(20);
+  tm.setBrightness(4);
+  tm.displayRawBytes(ring, 4);
+  delay(20);
+  tm.setBrightness(3);
+  tm.displayRawBytes(dash, 4);
+  delay(10);
+  tm.setBrightness(1);
+  tm.displayRawBytes(dash, 4);
+  delay(10);
+  tm.clearScreen();
+  tm.setBrightness(4);
 }
 
 uint8_t getSliderPercent (uint8_t i){
@@ -336,10 +450,15 @@ double expMovingAverage(uint8_t i) {
   return lastAvg[i];
 }
 
+// Reades ADCs with i pin index and does a linear interpolation with max and min adc values
 uint32_t readADC(uint8_t i){
-  return (uint32_t) expMovingAverage(i);
+  uint32_t val = expMovingAverage(i);
+  val = (val*1023)/1022;
+  if (val>1023){val=1023;}
+  return (uint32_t) val;
 }
 
+// Updates the TM1637 Screen when a display value changes, waits for screen timeout
 void updateScreen(){
   for (int i = 0; i<NUM_INPUTS; i++){
 
