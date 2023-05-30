@@ -1,4 +1,4 @@
-# AudioMixer v1.1 (beta)
+# AudioMixer v1.2 (beta)
 Digital audio USB controller firmware for Windows, tested using an Arduino Nano. Lets you control the volume of different applications using potentiometers and mute each channel individually using push button switches.
 Based on [Deej by Omriharel], can be used with deej.exe Windows client.
 
@@ -11,6 +11,7 @@ Based on [Deej by Omriharel], can be used with deej.exe Windows client.
 ## Upcoming (desired) Features
 * Windows audio device selection using one push button press.
 * Push buttons that can be used for executing Macros to automate tasks.
+* Calibration subroutine for sliders
 
 (Work in progress)
 

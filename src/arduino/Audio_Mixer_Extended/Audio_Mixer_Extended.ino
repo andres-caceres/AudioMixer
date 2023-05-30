@@ -3,12 +3,14 @@
   Based on deej by Omri Harel
   version: beta 1.2
 *******************************/
-/*  Pinout */
+
 
 #include <TM1637.h>
 //#include <iostream>
 #include <math.h>
 //#include <EEPROM.h>
+
+/*  Pinout */
 
 #define SLIDER_0 A3 //A0
 #define SLIDER_1 A2 //A1
@@ -36,6 +38,7 @@
 #define DISP_CLK 9 //D9
 #define DISP_DIO 13 //D13
 
+#define DEFAULT_BRIGHTNESS 3 //for screen
 
 const uint16_t ADC_RESOLUTION = 1023; 
 const uint8_t NUM_SLIDERS = 4; //and mute buttons
@@ -59,19 +62,20 @@ bool  isMuted[NUM_INPUTS];
 uint16_t lastAnalogValues[NUM_INPUTS];
 
 //display
-int previousValue[NUM_INPUTS];
+uint8_t previousValue[NUM_INPUTS];
 unsigned long previousTime = 0;
 unsigned long currentTime = 0;
 const unsigned int DISPLAY_THRESHOLD = 2;    // set threshold for detecting ADC value change
 const unsigned int DISPLAY_TIMEOUT = 3000;    // display threshold in seconds
+bool isLocked[NUM_INPUTS] = {true,true,true,true,true,true,true,true};
 
 //ExpAvgFilter
-const float alpha = 0.7;
+const float alpha = 0.2; //lower is slower
 double lastAvg[NUM_INPUTS];
 
 //max and min values for adc calibration
-const uint16_t analogMaxValues[NUM_INPUTS] = {1022, 1022, 1022, 1022, 1022, 1022, 1022, 1022};
-const uint16_t analogMinValues[NUM_INPUTS] = {0, 0, 0, 0, 0, 0, 0, 0};
+const uint16_t analogMaxValues[NUM_INPUTS] = {1009, 1009, 1009, 1009, 1021, 1021, 1021, 1021};
+const uint16_t analogMinValues[NUM_INPUTS] = {30, 30, 30, 30, 0, 0, 0, 0};
 
 //device button status
 bool devBtnStatus[NUM_DEVBTN] = {0,0,0};
@@ -85,7 +89,7 @@ TM1637 tm(DISP_CLK, DISP_DIO);
 
 void setup() {
 
-  Serial.begin(9600);
+  Serial.begin(19200);
   while(!Serial); //wait for serial ready
   Serial.println("Initializing...");
 
@@ -114,14 +118,14 @@ void setup() {
   pinMode(DISP_DIO, OUTPUT);
 
   tm.begin();
-  tm.setBrightness(4);
+  tm.setBrightness(DEFAULT_BRIGHTNESS);
   Serial.println("IO Setup Complete");
   delay(100);
   Serial.println("Initializing Values..."); 
   initValues();
   Serial.println("Done");
   Serial.println("Running welcome animation...");
-  HelloWorld();
+  //HelloWorld();
   Serial.println("Done");
   Serial.println("Streaming Data...");
 }
@@ -130,14 +134,10 @@ void loop() {
   updateValues();
   updateScreen();
   updateDevBtnStatus();
-  //updateDevBtnLEDs();
   updateDevBtnLEDs2();
-  sendValues(); // Actually send data (all the time)
-  //printisMuted();
-
-  //printDevBtnValues();
-  //printInputValues(); // For debug
-  delay(10);
+  //printInputValues();
+  sendValues(); // Send data
+  //delay(20);
 }
 
 void updateValues() {
@@ -167,7 +167,7 @@ void initValues() {
     isMuted[i] = 0;
   }
   
-  for(int j=0;j<10;j++){
+  for(int j=0;j<40;j++){
     for (uint8_t i = 0; i < NUM_INPUTS; i++) {
       analogValues[i]=readADC(i);
       lastAnalogValues[i]= analogValues[i];
@@ -331,14 +331,14 @@ void HelloWorld() {
     while(brightness[i]<80){      
       analogWrite(pwmLEDs[i],brightness[i]);
       brightness[i]++;
-      delay(3);
+      delay(2);
     }
   }
   while(brightness[0]<=255){   
     for(int i=NUM_DEVBTN-1;i>=0;i--){
       analogWrite(pwmLEDs[i],brightness[i]);
       brightness[i]++;
-      delay(1);
+      delay(2);
     }
   }
   for(int i=0;i<NUM_DEVBTN;i++){brightness[i]=255;} //reset brightness values to 255
@@ -423,20 +423,20 @@ void HelloWorld() {
   tm.displayRawBytes(dash, 4);
   delay(10);
   tm.clearScreen();
-  tm.setBrightness(4);
+  tm.setBrightness(DEFAULT_BRIGHTNESS);
 }
 
-uint8_t getSliderPercent (uint8_t i){
+uint16_t getSliderPercent (uint8_t i){
 
   uint32_t adc_value = analogValues[i];
-  uint32_t adc_lastvalue = lastAnalogValues[i];
-  uint16_t adc_max = analogMaxValues[i];
-  uint16_t adc_min = analogMinValues[i];
-  uint8_t disp_num = (((adc_value - adc_min + 5) * 100) / (adc_max - adc_min + 5)); //using 5 as an offset to get 100 with values lower than 1023 
-  if (disp_num > 100) { disp_num = 100;} // just to be safe
-  if (disp_num < 0) { disp_num = 0;} // just to be safe
+  //uint16_t adc_max = analogMaxValues[i];
+  //uint16_t adc_min = analogMinValues[i];
+  //uint8_t disp_num = (((adc_value - adc_min + 5) * 100) / (adc_max - adc_min + 5)); //using 5 as an offset to get 100 with values lower than 1023 
+  //if (disp_num > 100) { disp_num = 100;} // just to be safe
+  //if (disp_num < 0) { disp_num = 0;} // just to be safe
+
+  uint16_t disp_num = (adc_value*100)/1023;
   return disp_num;
-  
 }
 
 // Exponential Moving Average filter implementation for i ADCs
@@ -451,18 +451,28 @@ double expMovingAverage(uint8_t i) {
 }
 
 // Reades ADCs with i pin index and does a linear interpolation with max and min adc values
-uint32_t readADC(uint8_t i){
-  uint32_t val = expMovingAverage(i);
-  val = (val*1023)/1022;
-  if (val>1023){val=1023;}
-  return (uint32_t) val;
+uint16_t readADC(uint8_t i){
+  uint32_t adc_value = expMovingAverage(i);
+  uint16_t adc_max = analogMaxValues[i];
+  uint16_t adc_min = analogMinValues[i];
+  uint16_t offset = 1;
+  long reading = map(adc_value,adc_min+offset,adc_max,0,1023);
+  if (reading > 1023) { reading = 1023;} // just to be safe
+  if (reading < 0) { reading = 0;} // just to be safe
+  return (uint16_t) reading;
+}
+
+// Reades ADCs with i pin index and does a linear interpolation with max and min adc values
+uint16_t readADC_raw(uint8_t i){
+  uint16_t adc_value = expMovingAverage(i);
+  return (uint16_t) adc_value;
 }
 
 // Updates the TM1637 Screen when a display value changes, waits for screen timeout
 void updateScreen(){
   for (int i = 0; i<NUM_INPUTS; i++){
 
-    int num=getSliderPercent(i);    
+    uint8_t num=getSliderPercent(i);    
     if (num != previousValue[i]){ //check for value change
     //display num
       if (!isMuted[i]){
@@ -476,9 +486,9 @@ void updateScreen(){
       currentTime = millis();
       if ((currentTime - previousTime) >= DISPLAY_TIMEOUT){ //check for inactivity timeout
         tm.clearScreen();
+        tm.setDp(4);
       }
-    }    
-
+    }   
   }
 }
 
@@ -495,7 +505,7 @@ void displayNumber(uint8_t num) {
     }
 }
 
-void displayNumberAndCh(uint8_t num, uint8_t ch) {
+void displayNumberAndCh(uint16_t num, uint8_t ch) {
 
   String mystring = "";
 
