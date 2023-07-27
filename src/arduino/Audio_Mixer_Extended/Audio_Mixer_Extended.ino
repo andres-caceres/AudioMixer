@@ -1,7 +1,7 @@
 /*******************************
   AutoMixer Extended Firmware
   Based on deej by Omri Harel
-  version: beta 1.2
+  version: beta 1.3 >> toggle
 *******************************/
 
 
@@ -38,7 +38,7 @@
 #define DISP_CLK 9 //D9
 #define DISP_DIO 13 //D13
 
-#define DEFAULT_BRIGHTNESS 3 //for screen
+#define DEFAULT_BRIGHTNESS 2 //for screen
 
 const uint16_t ADC_RESOLUTION = 1023; 
 const uint8_t NUM_SLIDERS = 4; //and mute buttons
@@ -81,6 +81,7 @@ const uint16_t analogMinValues[NUM_INPUTS] = {30, 30, 30, 30, 0, 0, 0, 0};
 bool devBtnStatus[NUM_DEVBTN] = {0,0,0};
 bool prevDevBtnStatus[NUM_DEVBTN] = {0,0,0};
 int ledStatus[NUM_DEVBTN]; //status 0: off, 1:blink on, 2:blink off, 3: on
+String toggle = String("");
 
 //leds
 int brightness[NUM_DEVBTN]={255,255,255};
@@ -125,7 +126,7 @@ void setup() {
   initValues();
   Serial.println("Done");
   Serial.println("Running welcome animation...");
-  //HelloWorld();
+  LEDWelcome();
   Serial.println("Done");
   Serial.println("Streaming Data...");
 }
@@ -151,9 +152,9 @@ void updateValues() {
     isMuted[i] = (bool) digitalRead(muteBtns[i]);
   }
 
-  for (uint8_t i = NUM_SLIDERS+1; i < NUM_INPUTS; i++) {
-    isMuted[i] = devBtnStatus[i-(NUM_SLIDERS+1)];
-  }
+  //for (uint8_t i = NUM_SLIDERS+1; i < NUM_INPUTS; i++) {
+  //  isMuted[i] = devBtnStatus[i-(NUM_SLIDERS+1)];
+  //}
 
 }
 
@@ -186,6 +187,10 @@ void sendValues() {
       builtString += String("|");
     }
   }
+
+  builtString += String("\;");
+  builtString += toggle;
+  toggle = String(""); //revert back to empty string
   
   Serial.println(builtString);
 }
@@ -233,7 +238,7 @@ void printisMuted() {
 
 void updateDevBtnStatus() {
   
-   for (int i = 0; i < NUM_DEVBTN; i++) { //starts in i=1 because of hardware fault with devbutton 0    
+   for (int i = 0; i < NUM_DEVBTN; i++) { //starts in i=1 because of hardware fault with devbutton 0, and now is also used for device switching
     if(i==0){
       if(digitalRead(devBtns[i])==LOW) {
       
@@ -242,6 +247,7 @@ void updateDevBtnStatus() {
         delay(10);
         
         devBtnStatus[i] = !devBtnStatus[i];
+        toggle = String("toggle");
         ledStatus[i]=1;
       }      
     } else {
@@ -321,7 +327,7 @@ void updateDevBtnLEDs2 () {
   }  
 }
 
-void HelloWorld() {
+void LEDWelcome() {
   
   //pwmledbtn welcome for 3 leds
   for(int i=0;i<NUM_DEVBTN;i++){brightness[i]=0;}//set brightness values to 0
@@ -372,7 +378,11 @@ void HelloWorld() {
   //       delay(2);        
   //     }    
   //   }    
-  // }  
+  // }
+  tm.setBrightness(DEFAULT_BRIGHTNESS);
+}
+
+void screenWelcome() {
   
   // welcome display animation
   int t = 60; //delay time
@@ -425,6 +435,7 @@ void HelloWorld() {
   tm.clearScreen();
   tm.setBrightness(DEFAULT_BRIGHTNESS);
 }
+
 
 uint16_t getSliderPercent (uint8_t i){
 
